@@ -1,0 +1,8 @@
+{
+  "appId": "com.youtubescraper.app",
+  "appName": "YouTube Scraper",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

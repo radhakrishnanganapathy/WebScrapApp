@@ -1,0 +1,90 @@
+# General
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.bak
+*.swp
+*.patch
+*.diff
+
+# Environments
+.env
+.env.local
+.env.*.local
+.venv
+venv/
+ENV/
+env.bak/
+env/
+
+# Large files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+*.iso
+*.dmg
+*.exe
+*.apk
+*.ipa
+*.msi
+*.pdf
+*.mp4
+*.mp3
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Backend (Python)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.tox/
+.nox/
+.cache/
+backend/venv/
+backend/__pycache__/
+backend/*.py[cod]
+backend/youtube_scraper.db
+
+# Databases
+*.sqlite
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Frontend (Node.js/Vite)
+node_modules/
+dist/
+dist-ssr/
+build/
+.next/
+.serverless/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/android/build/
+frontend/android/app/build/
+frontend/android/.gradle/
+frontend/android/local.properties
+frontend/capacitor.config.json.timestamp
+
+# Root directories
+node_modules/
+venv/
+env/
+dist/
+build/
