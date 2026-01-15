@@ -39,3 +39,18 @@ class Video(Base):
     scraped_at = Column(DateTime, default=datetime.utcnow)
 
     channel = relationship("Channel", back_populates="videos")
+    comments = relationship("Comment", back_populates="video", cascade="all, delete-orphan")
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    comment_id = Column(String, unique=True, index=True)
+    video_db_id = Column(Integer, ForeignKey("videos.id"))
+    text = Column(Text)
+    author_name = Column(String)
+    like_count = Column(Integer)
+    published_at = Column(DateTime)
+    scraped_at = Column(DateTime, default=datetime.utcnow)
+
+    video = relationship("Video", back_populates="comments")

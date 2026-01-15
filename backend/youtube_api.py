@@ -116,3 +116,56 @@ def fetch_recent_videos(upload_playlist_id, limit=10):
         })
     
     return videos
+
+def fetch_video_details(video_id):
+    youtube = get_youtube_client()
+    
+    video_response = youtube.videos().list(
+        part="snippet,statistics",
+        id=video_id
+    ).execute()
+    
+    if not video_response.get('items'):
+        return None
+        
+    item = video_response['items'][0]
+    snippet = item['snippet']
+    stats = item['statistics']
+    
+    return {
+        "video_id": item['id'],
+        "channel_id": snippet.get('channelId'),
+        "title": snippet.get('title'),
+        "description": snippet.get('description'),
+        "published_at": snippet.get('publishedAt'),
+        "views": int(stats.get('viewCount', 0)),
+        "likes": int(stats.get('likeCount', 0)),
+        "total_comments": int(stats.get('commentCount', 0))
+    }
+
+def fetch_video_comments(video_id, limit=20):
+    youtube = get_youtube_client()
+    
+    try:
+        comments_response = youtube.commentThreads().list(
+            part="snippet",
+            videoId=video_id,
+            maxResults=limit,
+            textFormat="plainText"
+        ).execute()
+    except Exception:
+        # Comments might be disabled
+        return []
+
+    comments = []
+    for item in comments_response.get('items', []):
+        snippet = item['snippet']['topLevelComment']['snippet']
+        comments.append({
+            "comment_id": item['id'],
+            "text": snippet.get('textDisplay'),
+            "author_name": snippet.get('authorDisplayName'),
+            "like_count": snippet.get('likeCount', 0),
+            "published_at": snippet.get('publishedAt')
+        })
+    
+    return comments
