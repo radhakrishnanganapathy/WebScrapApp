@@ -59,4 +59,6 @@ A full-stack application for scraping YouTube channel and video data. Works on W
 -   **Responsive Design**: Premium dark mode UI that adapts to mobile and desktop screens.
 -   **Offline Data**: All scraped data is saved in a local SQLite database.
 
-last push 15-jan-26
+last push 15-jan-26 
+last push 16-jan-26 
+
