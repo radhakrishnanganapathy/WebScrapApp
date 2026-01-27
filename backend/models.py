@@ -54,3 +54,26 @@ class Comment(Base):
     scraped_at = Column(DateTime, default=datetime.utcnow)
 
     video = relationship("Video", back_populates="comments")
+
+class MonitoredChannel(Base):
+    __tablename__ = "monitored_channels"
+
+    id = Column(Integer, primary_key=True, index=True)
+    channel_id = Column(String, index=True)
+    name = Column(String)
+    comment_text = Column(Text)
+    is_active = Column(Integer, default=1) # 1 for active, 0 for inactive
+    last_checked_video_id = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class AutomatedCommentReport(Base):
+    __tablename__ = "automated_comment_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    channel_id = Column(String)
+    video_id = Column(String)
+    comment_id = Column(String)
+    comment_text = Column(Text)
+    status = Column(String) # "pending", "success", "failed"
+    error_message = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -1,4 +1,5 @@
 import os
+import re
 from googleapiclient.discovery import build
 from datetime import datetime
 from dotenv import load_dotenv
@@ -76,11 +77,34 @@ def fetch_channel_info(channel_handle_or_id):
         "total_videos": int(stats.get('videoCount', 0)),
         "custom_url": snippet.get('customUrl'),
         "location": snippet.get('country'),
-        "links": channel_settings.get('keywords', ''), # Using keywords as a proxy for 'links' if direct links unavailable
+        "links": channel_settings.get('keywords', ''), 
         "upload_playlist_id": item['contentDetails']['relatedPlaylists']['uploads']
     }
 
     return channel_data
+
+def is_short_or_live(video_data):
+    """
+    Heuristic to check if a video is a Short or a Live stream.
+    """
+    if video_data.get("live_broadcast_content") != "none":
+        return True
+    
+    duration = video_data.get("duration", "")
+    if "H" in duration: return False 
+    
+    total_seconds = 0
+    import re
+    minutes = re.search(r'(\d+)M', duration)
+    seconds = re.search(r'(\d+)S', duration)
+    
+    if minutes: total_seconds += int(minutes.group(1)) * 60
+    if seconds: total_seconds += int(seconds.group(1))
+    
+    if total_seconds > 0 and total_seconds <= 60:
+        return True
+        
+    return False
 
 def fetch_recent_videos(upload_playlist_id, limit=10):
     youtube = get_youtube_client()
@@ -97,7 +121,7 @@ def fetch_recent_videos(upload_playlist_id, limit=10):
         return []
 
     video_details = youtube.videos().list(
-        part="snippet,statistics",
+        part="snippet,statistics,contentDetails",
         id=",".join(video_ids)
     ).execute()
 
@@ -105,11 +129,14 @@ def fetch_recent_videos(upload_playlist_id, limit=10):
     for item in video_details.get('items', []):
         snippet = item['snippet']
         stats = item['statistics']
+        content = item['contentDetails']
         videos.append({
             "video_id": item['id'],
             "title": snippet.get('title'),
             "description": snippet.get('description'),
             "published_at": snippet.get('publishedAt'),
+            "live_broadcast_content": snippet.get('liveBroadcastContent'),
+            "duration": content.get('duration'),
             "views": int(stats.get('viewCount', 0)),
             "likes": int(stats.get('likeCount', 0)),
             "total_comments": int(stats.get('commentCount', 0))
@@ -117,11 +144,26 @@ def fetch_recent_videos(upload_playlist_id, limit=10):
     
     return videos
 
+def get_latest_video(channel_id):
+    """Fetch only the latest REGULAR video ID for a channel (no live, no shorts)."""
+    try:
+        channel_data = fetch_channel_info(channel_id)
+        if not channel_data:
+            return None
+        
+        videos = fetch_recent_videos(channel_data["upload_playlist_id"], limit=5)
+        for vid in videos:
+            if not is_short_or_live(vid):
+                return vid["video_id"]
+    except Exception as e:
+        print(f"Error fetching latest video for {channel_id}: {e}")
+    return None
+
 def fetch_video_details(video_id):
     youtube = get_youtube_client()
     
     video_response = youtube.videos().list(
-        part="snippet,statistics",
+        part="snippet,statistics,contentDetails",
         id=video_id
     ).execute()
     
@@ -131,6 +173,7 @@ def fetch_video_details(video_id):
     item = video_response['items'][0]
     snippet = item['snippet']
     stats = item['statistics']
+    content = item['contentDetails']
     
     return {
         "video_id": item['id'],
@@ -138,6 +181,8 @@ def fetch_video_details(video_id):
         "title": snippet.get('title'),
         "description": snippet.get('description'),
         "published_at": snippet.get('publishedAt'),
+        "live_broadcast_content": snippet.get('liveBroadcastContent'),
+        "duration": content.get('duration'),
         "views": int(stats.get('viewCount', 0)),
         "likes": int(stats.get('likeCount', 0)),
         "total_comments": int(stats.get('commentCount', 0))
@@ -154,7 +199,6 @@ def fetch_video_comments(video_id, limit=20):
             textFormat="plainText"
         ).execute()
     except Exception:
-        # Comments might be disabled
         return []
 
     comments = []

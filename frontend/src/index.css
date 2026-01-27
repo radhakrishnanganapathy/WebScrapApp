@@ -230,3 +230,111 @@ button:disabled {
     transform: rotate(360deg);
   }
 }
+
+.tab-container {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.tab {
+  padding: 0.8rem 1.5rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  transition: all 0.2s;
+  font-weight: 600;
+}
+
+.tab:hover {
+  border-color: var(--text-dim);
+}
+
+.tab.active {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.log-item {
+  background: var(--bg-secondary);
+  padding: 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  margin-bottom: 0.8rem;
+}
+
+.status-badge {
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.status-success {
+  background: #2e7d32;
+  color: white;
+}
+
+.status-failed {
+  background: #d32f2f;
+  color: white;
+}
+
+.status-active {
+  background: #1976d2;
+  color: white;
+}
+
+.status-inactive {
+  background: #333;
+  color: var(--text-dim);
+}
+
+.status-pending {
+  background: var(--accent);
+  color: white;
+}
+
+.monitor-form {
+  background: var(--bg-secondary);
+  padding: 1.5rem;
+  border-radius: var(--radius);
+  margin-bottom: 2rem;
+  border: 1px solid var(--border);
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.monitor-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.monitor-list-item:last-child {
+  border-bottom: none;
+}
+
+.select-scrape-type {
+  padding: 0.8rem;
+  background: var(--bg-secondary);
+  color: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+}

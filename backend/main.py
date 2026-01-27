@@ -4,12 +4,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
 import json
+import asyncio
 
 from database import get_db, init_db
-from models import Channel, Video
-from youtube_api import fetch_channel_info, fetch_recent_videos
+from models import Channel, Video, Comment, MonitoredChannel, AutomatedCommentReport
+from youtube_api import fetch_channel_info, fetch_recent_videos, fetch_video_details, fetch_video_comments, get_latest_video
+from pydantic import BaseModel
 
 app = FastAPI(title="YouTube Scraper API")
+
+# Global state for monitoring
+monitoring_active = False
+monitoring_task_running = False
+
+class MonitorCreate(BaseModel):
+    channel_id: str
+    comment_text: str
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,28 +28,59 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+async def monitor_loop():
+    global monitoring_active
+    while True:
+        if monitoring_active:
+            print("Running monitoring check...")
+            try:
+                from database import AsyncSessionLocal
+                async with AsyncSessionLocal() as db:
+                    result = await db.execute(select(MonitoredChannel).where(MonitoredChannel.is_active == 1))
+                    monitored_list = result.scalars().all()
+                    
+                    for ch in monitored_list:
+                        latest_vid = get_latest_video(ch.channel_id)
+                        if latest_vid and latest_vid != ch.last_checked_video_id:
+                            # Log that a new video needs a comment
+                            report = AutomatedCommentReport(
+                                channel_id=ch.channel_id,
+                                video_id=latest_vid,
+                                comment_id=None,
+                                comment_text=ch.comment_text,
+                                status="pending"
+                            )
+                            db.add(report)
+                            ch.last_checked_video_id = latest_vid
+                            print(f"New video detected: {latest_vid} for channel {ch.channel_id}")
+                    
+                    await db.commit()
+            except Exception as e:
+                print(f"Error in monitor loop: {e}")
+        
+        await asyncio.sleep(60)
+
 @app.on_event("startup")
 async def on_startup():
+    global monitoring_task_running
     await init_db()
+    if not monitoring_task_running:
+        asyncio.create_task(monitor_loop())
+        monitoring_task_running = True
 
 def parse_yt_date(date_str):
     if not date_str:
         return None
-    # YouTube API dates can be "2021-01-10T12:02:20Z" or "2021-01-10T12:02:20.098389Z"
     try:
+        if isinstance(date_str, datetime):
+            return date_str
         return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
     except ValueError:
         return None
 
-from models import Channel, Video, Comment
-from youtube_api import fetch_channel_info, fetch_recent_videos, fetch_video_details, fetch_video_comments
-
-# ... imports ...
-
 @app.post("/scrape/{identifier}")
 async def scrape_data(identifier: str, type: str = "channel", db: AsyncSession = Depends(get_db)):
     if type == "channel":
-        # 1. Fetch from YouTube
         try:
             channel_info = fetch_channel_info(identifier)
         except Exception as e:
@@ -48,7 +89,6 @@ async def scrape_data(identifier: str, type: str = "channel", db: AsyncSession =
         if not channel_info:
             raise HTTPException(status_code=404, detail="Channel not found")
 
-        # 2. Check if exists in DB
         result = await db.execute(select(Channel).where(Channel.channel_id == channel_info["channel_id"]))
         db_channel = result.scalar_one_or_none()
 
@@ -56,7 +96,6 @@ async def scrape_data(identifier: str, type: str = "channel", db: AsyncSession =
             db_channel = Channel(channel_id=channel_info["channel_id"])
             db.add(db_channel)
 
-        # 3. Update info
         db_channel.name = channel_info["name"]
         db_channel.description = channel_info["description"]
         db_channel.published_at = parse_yt_date(channel_info["published_at"])
@@ -69,13 +108,11 @@ async def scrape_data(identifier: str, type: str = "channel", db: AsyncSession =
         db_channel.links = channel_info["links"]
         db_channel.scraped_at = datetime.utcnow()
 
-        # 4. Fetch videos
         videos_data = fetch_recent_videos(channel_info["upload_playlist_id"])
         
         if videos_data:
             db_channel.last_video_uploaded_at = parse_yt_date(videos_data[0]["published_at"])
             
-            # Upsert videos
             for v in videos_data:
                 v_result = await db.execute(select(Video).where(Video.video_id == v["video_id"]))
                 db_video = v_result.scalar_one_or_none()
@@ -96,18 +133,15 @@ async def scrape_data(identifier: str, type: str = "channel", db: AsyncSession =
         return {"message": "Channel Scraped", "id": db_channel.channel_id}
 
     elif type == "video":
-        # identifier is video_id
         video_details = fetch_video_details(identifier)
         if not video_details:
              raise HTTPException(status_code=404, detail="Video not found")
         
-        # We need the channel to exist
         channel_id = video_details["channel_id"]
         result = await db.execute(select(Channel).where(Channel.channel_id == channel_id))
         db_channel = result.scalar_one_or_none()
         
         if not db_channel:
-             # Fetch channel info if not exists
              channel_info = fetch_channel_info(channel_id)
              if channel_info:
                 db_channel = Channel(
@@ -124,7 +158,6 @@ async def scrape_data(identifier: str, type: str = "channel", db: AsyncSession =
                 await db.commit()
                 await db.refresh(db_channel)
         
-        # Now upsert video
         v_result = await db.execute(select(Video).where(Video.video_id == video_details["video_id"]))
         db_video = v_result.scalar_one_or_none()
 
@@ -144,31 +177,23 @@ async def scrape_data(identifier: str, type: str = "channel", db: AsyncSession =
         return {"message": "Video Scraped", "id": video_details["video_id"]}
 
     elif type == "comment":
-        # identifier is video_id
         comments_data = fetch_video_comments(identifier)
         if not comments_data:
             return {"message": "No comments found or comments disabled", "count": 0}
 
-        # Ensure video exists
         v_result = await db.execute(select(Video).where(Video.video_id == identifier))
         db_video = v_result.scalar_one_or_none()
 
         if not db_video:
-            # If video doesn't exist, try to fetch it first (recursively or just call logic)
-            # For simplicity, let's just fetch it quickly
             video_details = fetch_video_details(identifier)
             if video_details:
-                # Need channel...
                  channel_id = video_details["channel_id"]
-                 # Check channel...
                  c_result = await db.execute(select(Channel).where(Channel.channel_id == channel_id))
                  db_channel = c_result.scalar_one_or_none()
                  if not db_channel:
-                     # Just create a dummy channel entry if real fetch is too heavy, OR fetch it.
-                     # Let's fetch it to be safe and consistent
                      channel_info = fetch_channel_info(channel_id)
                      if channel_info:
-                         db_channel = Channel(channel_id=channel_id, name=channel_info["name"]) # Minimal
+                         db_channel = Channel(channel_id=channel_id, name=channel_info["name"]) 
                          db.add(db_channel)
                          await db.commit()
                          await db.refresh(db_channel)
@@ -180,10 +205,8 @@ async def scrape_data(identifier: str, type: str = "channel", db: AsyncSession =
             else:
                  raise HTTPException(status_code=404, detail="Video not found for these comments")
 
-        # Now save comments
         count = 0
         for c in comments_data:
-            # Check exist
             c_result = await db.execute(select(Comment).where(Comment.comment_id == c["comment_id"]))
             db_comment = c_result.scalar_one_or_none()
 
@@ -200,7 +223,6 @@ async def scrape_data(identifier: str, type: str = "channel", db: AsyncSession =
         
         await db.commit()
         return {"message": "Comments Scraped", "count": count}
-
     else:
         raise HTTPException(status_code=400, detail="Invalid scrape type")
 
@@ -213,17 +235,64 @@ async def list_channels(db: AsyncSession = Depends(get_db)):
 async def get_channel_details(channel_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Channel).where(Channel.channel_id == channel_id))
     channel = result.scalar_one_or_none()
-    
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
     v_result = await db.execute(select(Video).where(Video.channel_db_id == channel.id).order_by(Video.published_at.desc()))
     videos = v_result.scalars().all()
-    
-    return {
-        "channel": channel,
-        "videos": videos
-    }
+    return {"channel": channel, "videos": videos}
+
+# --- Monitoring Endpoints ---
+@app.post("/monitoring/channels")
+async def add_monitored_channel(data: MonitorCreate, db: AsyncSession = Depends(get_db)):
+    channel_info = fetch_channel_info(data.channel_id)
+    if not channel_info:
+        raise HTTPException(status_code=404, detail="YouTube channel not found")
+    result = await db.execute(select(MonitoredChannel).where(MonitoredChannel.channel_id == channel_info["channel_id"]))
+    existing = result.scalar_one_or_none()
+    if existing:
+        existing.comment_text = data.comment_text
+        existing.is_active = 1
+    else:
+        latest_vid = get_latest_video(channel_info["channel_id"])
+        new_monitor = MonitoredChannel(
+            channel_id=channel_info["channel_id"],
+            name=channel_info["name"],
+            comment_text=data.comment_text,
+            last_checked_video_id=latest_vid
+        )
+        db.add(new_monitor)
+    await db.commit()
+    return {"message": "Channel added to monitoring"}
+
+@app.get("/monitoring/channels")
+async def list_monitored_channels(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(MonitoredChannel))
+    return result.scalars().all()
+
+@app.delete("/monitoring/channels/{id}")
+async def remove_monitored_channel(id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(MonitoredChannel).where(MonitoredChannel.id == id))
+    channel = result.scalar_one_or_none()
+    if channel:
+        await db.delete(channel)
+        await db.commit()
+    return {"message": "Channel removed from monitoring"}
+
+@app.post("/monitoring/toggle")
+async def toggle_monitoring():
+    global monitoring_active
+    monitoring_active = not monitoring_active
+    return {"status": "active" if monitoring_active else "inactive"}
+
+@app.get("/monitoring/status")
+async def get_monitoring_status():
+    global monitoring_active
+    return {"status": "active" if monitoring_active else "inactive"}
+
+@app.get("/monitoring/logs")
+async def get_monitoring_logs(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(AutomatedCommentReport).order_by(AutomatedCommentReport.created_at.desc()).limit(50))
+    return result.scalars().all()
 
 if __name__ == "__main__":
     import uvicorn
