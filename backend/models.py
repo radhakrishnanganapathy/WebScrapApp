@@ -77,3 +77,51 @@ class AutomatedCommentReport(Base):
     status = Column(String) # "pending", "success", "failed"
     error_message = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+# --- Twitter (X) Models ---
+
+class TwitterAccount(Base):
+    __tablename__ = "twitter_accounts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    display_name = Column(String)
+    description = Column(Text)
+    profile_image_url = Column(String)
+    follower_count = Column(Integer)
+    location = Column(String)
+    scraped_at = Column(DateTime, default=datetime.utcnow)
+    
+    posts = relationship("TwitterPost", back_populates="account", cascade="all, delete-orphan")
+
+class TwitterPost(Base):
+    __tablename__ = "twitter_posts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(String, unique=True, index=True)
+    account_id = Column(Integer, ForeignKey("twitter_accounts.id"))
+    text = Column(Text)
+    view_count = Column(Integer, default=0)
+    like_count = Column(Integer, default=0)
+    retweet_count = Column(Integer, default=0)
+    reply_count = Column(Integer, default=0)
+    published_at = Column(DateTime)
+    scraped_at = Column(DateTime, default=datetime.utcnow)
+    
+    account = relationship("TwitterAccount", back_populates="posts")
+    replies = relationship("TwitterReply", back_populates="post", cascade="all, delete-orphan")
+
+class TwitterReply(Base):
+    __tablename__ = "twitter_replies"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    reply_id = Column(String, unique=True, index=True)
+    post_db_id = Column(Integer, ForeignKey("twitter_posts.id"))
+    text = Column(Text)
+    author_username = Column(String)
+    author_display_name = Column(String)
+    like_count = Column(Integer, default=0)
+    published_at = Column(DateTime)
+    scraped_at = Column(DateTime, default=datetime.utcnow)
+    
+    post = relationship("TwitterPost", back_populates="replies")

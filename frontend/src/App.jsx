@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Youtube, Search, ArrowLeft, Users, PlaySquare, Eye, Calendar, Link as LinkIcon, MapPin, AtSign, Bell, Trash2, Power, MessageSquare } from 'lucide-react';
+import { Youtube, Twitter, Search, ArrowLeft, Users, PlaySquare, Eye, Calendar, Link as LinkIcon, MapPin, AtSign, Bell, Trash2, Power, MessageSquare } from 'lucide-react';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -12,6 +12,9 @@ function App() {
   const [selectedChannel, setSelectedChannel] = useState(null);
   const [error, setError] = useState(null);
   const [scrapeType, setScrapeType] = useState('channel');
+  const [platform, setPlatform] = useState('youtube'); // 'youtube' or 'twitter'
+  const [twitterAccounts, setTwitterAccounts] = useState([]);
+  const [selectedTwitterAccount, setSelectedTwitterAccount] = useState(null);
 
   // Monitoring States
   const [monitoredChannels, setMonitoredChannels] = useState([]);
@@ -22,6 +25,7 @@ function App() {
 
   useEffect(() => {
     fetchChannels();
+    fetchTwitterAccounts();
     fetchMonitoringStatus();
     fetchMonitoredChannels();
     fetchLogs();
@@ -40,6 +44,15 @@ function App() {
       setChannels(response.data);
     } catch (err) {
       console.error("Failed to fetch channels", err);
+    }
+  };
+
+  const fetchTwitterAccounts = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/twitter/accounts`);
+      setTwitterAccounts(response.data);
+    } catch (err) {
+      console.error("Failed to fetch twitter accounts", err);
     }
   };
 
@@ -114,9 +127,20 @@ function App() {
     setIsLoading(true);
     setError(null);
     try {
-      await axios.post(`${API_BASE}/scrape/${searchQuery}?type=${scrapeType}`);
+      if (platform === 'youtube') {
+        await axios.post(`${API_BASE}/scrape/${searchQuery}?type=${scrapeType}`);
+        await fetchChannels();
+      } else {
+        // Twitter mapping
+        let type = scrapeType;
+        if (type === 'channel') type = 'user';
+        if (type === 'video') type = 'post';
+        if (type === 'comment') type = 'reply';
+
+        await axios.post(`${API_BASE}/scrape_twitter/${searchQuery}?type=${type}`);
+        await fetchTwitterAccounts();
+      }
       setSearchQuery('');
-      await fetchChannels();
     } catch (err) {
       setError(err.response?.data?.detail || `Failed to scrape ${scrapeType}`);
     } finally {
@@ -129,9 +153,24 @@ function App() {
     try {
       const response = await axios.get(`${API_BASE}/channels/${channelId}`);
       setSelectedChannel(response.data);
+      setSelectedTwitterAccount(null);
       setActiveTab('scraper');
     } catch (err) {
       setError("Failed to load channel details");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const showTwitterDetails = async (username) => {
+    setIsLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE}/twitter/accounts/${username}`);
+      setSelectedTwitterAccount(response.data);
+      setSelectedChannel(null);
+      setActiveTab('scraper');
+    } catch (err) {
+      setError("Failed to load twitter details");
     } finally {
       setIsLoading(false);
     }
@@ -152,22 +191,32 @@ function App() {
   };
 
   const getPlaceholder = () => {
-    if (scrapeType === 'channel') return "Enter Channel ID or Handle (e.g. @MrBeast or UC...)";
-    if (scrapeType === 'video') return "Enter Video ID (e.g. dQw4w9WgXcQ)";
-    if (scrapeType === 'comment') return "Enter Video ID to scrape comments";
+    if (platform === 'youtube') {
+      if (scrapeType === 'channel') return "Enter YouTube Channel ID or Handle (e.g. @MrBeast)";
+      if (scrapeType === 'video') return "Enter YouTube Video ID (e.g. dQw4w9WgXcQ)";
+      if (scrapeType === 'comment') return "Enter Video ID to scrape comments";
+    } else {
+      if (scrapeType === 'channel') return "Enter Twitter Username (e.g. elonmusk)";
+      if (scrapeType === 'video') return "Enter Tweet ID (e.g. 123456789)";
+      if (scrapeType === 'comment') return "Enter Tweet ID to scrape replies";
+    }
     return "";
   };
 
   return (
     <div className="container">
       <header>
-        <div className="logo" onClick={() => { setSelectedChannel(null); setActiveTab('scraper'); }} style={{ cursor: 'pointer' }}>
-          <Youtube size={32} color="#FF0000" fill="#FF0000" />
-          <span>YouTube</span> Scraper
+        <div className="logo" onClick={() => { setSelectedChannel(null); setSelectedTwitterAccount(null); setActiveTab('scraper'); }} style={{ cursor: 'pointer' }}>
+          {platform === 'youtube' ? (
+            <Youtube size={32} color="#FF0000" fill="#FF0000" />
+          ) : (
+            <Twitter size={32} color="#1DA1F2" fill="#1DA1F2" />
+          )}
+          <span>Scrap</span> App
         </div>
 
         <div className="tab-container">
-          <div className={`tab ${activeTab === 'scraper' ? 'active' : ''}`} onClick={() => { setActiveTab('scraper'); setSelectedChannel(null); }}>
+          <div className={`tab ${activeTab === 'scraper' ? 'active' : ''}`} onClick={() => { setActiveTab('scraper'); setSelectedChannel(null); setSelectedTwitterAccount(null); }}>
             <Search size={18} /> Scraper
           </div>
           <div className={`tab ${activeTab === 'monitor' ? 'active' : ''}`} onClick={() => setActiveTab('monitor')}>
@@ -175,6 +224,21 @@ function App() {
           </div>
         </div>
       </header>
+
+      <div className="platform-toggle" style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
+        <button
+          onClick={() => { setPlatform('youtube'); setScrapeType('channel'); }}
+          style={{ flex: 1, background: platform === 'youtube' ? 'var(--primary)' : 'var(--bg-secondary)', border: platform === 'youtube' ? 'none' : '1px solid var(--border)' }}
+        >
+          YOUTUBE
+        </button>
+        <button
+          onClick={() => { setPlatform('twitter'); setScrapeType('channel'); }}
+          style={{ flex: 1, background: platform === 'twitter' ? 'var(--accent)' : 'var(--bg-secondary)', border: platform === 'twitter' ? 'none' : '1px solid var(--border)' }}
+        >
+          TWITTER (X)
+        </button>
+      </div>
 
       {activeTab === 'scraper' ? (
         selectedChannel ? (
@@ -222,11 +286,53 @@ function App() {
               ))}
             </div>
           </div>
+        ) : selectedTwitterAccount ? (
+          <div className="fade-in">
+            <button onClick={() => setSelectedTwitterAccount(null)} style={{ background: 'none', border: '1px solid var(--border)', marginBottom: '1.5rem' }}>
+              <ArrowLeft size={18} /> Back
+            </button>
+
+            <div className="channel-profile">
+              <img src={selectedTwitterAccount.account.profile_image_url} alt="" className="channel-dp" />
+              <div className="channel-meta">
+                <h1>{selectedTwitterAccount.account.display_name}</h1>
+                <div className="card-stats" style={{ fontSize: '1rem', marginBottom: '1rem' }}>
+                  <span><AtSign size={14} style={{ verticalAlign: 'middle' }} /> @{selectedTwitterAccount.account.username}</span>
+                  <span><Users size={14} style={{ verticalAlign: 'middle' }} /> {formatNumber(selectedTwitterAccount.account.follower_count)} followers</span>
+                </div>
+                <p className="text-dim" style={{ maxWidth: '600px' }}>{selectedTwitterAccount.account.description}</p>
+
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', flexWrap: 'wrap' }}>
+                  <div className="tag"><MapPin size={12} /> {selectedTwitterAccount.account.location || 'Cyber Space'}</div>
+                  <div className="tag"><LinkIcon size={12} /> Scraped {new Date(selectedTwitterAccount.account.scraped_at).toLocaleDateString()}</div>
+                </div>
+              </div>
+            </div>
+
+            <h3 style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Recent Posts</h3>
+            <div className="grid">
+              {selectedTwitterAccount.posts.map(post => (
+                <div key={post.post_id} className="card">
+                  <div className="card-content">
+                    <div className="card-title" style={{ fontSize: '1rem', fontWeight: 400 }}>{post.text}</div>
+                    <div className="card-stats" style={{ marginTop: '1rem' }}>
+                      <span>{post.like_count} likes</span>
+                      <span>{post.retweet_count} retweets</span>
+                      <span>{post.reply_count} replies</span>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.5rem' }}>
+                      Posted: {formatDate(post.published_at)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="fade-in">
             <div className="search-section">
               <h2 style={{ marginBottom: '1rem' }}>
-                Scrape New {scrapeType.charAt(0).toUpperCase() + scrapeType.slice(1)}
+                Scrape {platform === 'youtube' ? 'YouTube' : 'Twitter'} {scrapeType.charAt(0).toUpperCase() + scrapeType.slice(1)}
               </h2>
 
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -235,9 +341,9 @@ function App() {
                   onChange={(e) => setScrapeType(e.target.value)}
                   className="select-scrape-type"
                 >
-                  <option value="channel">Channel</option>
-                  <option value="video">Video</option>
-                  <option value="comment">Comments</option>
+                  <option value="channel">{platform === 'youtube' ? 'Channel' : 'User'}</option>
+                  <option value="video">{platform === 'youtube' ? 'Video' : 'Post'}</option>
+                  <option value="comment">{platform === 'youtube' ? 'Comments' : 'Replies'}</option>
                 </select>
               </div>
 
@@ -248,36 +354,60 @@ function App() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
-                <button type="submit" disabled={isLoading}>
+                <button type="submit" disabled={isLoading} style={{ background: platform === 'youtube' ? 'var(--primary)' : 'var(--accent)' }}>
                   {isLoading ? <div className="loading-spinner"></div> : <><Search size={18} /> Scrape</>}
                 </button>
               </form>
               {error && <p style={{ color: 'var(--primary)', marginTop: '1rem', fontSize: '0.9rem' }}>{error}</p>}
             </div>
 
-            <h3 style={{ marginBottom: '1.5rem' }}>Scraped Channels</h3>
-            {channels.length === 0 && !isLoading && (
-              <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)', border: '2px dashed var(--border)', borderRadius: 'var(--radius)' }}>
-                No channels scraped yet. Start by searching above!
-              </div>
-            )}
-            <div className="grid">
-              {channels.map(channel => (
-                <div key={channel.id} className="card" onClick={() => showDetails(channel.channel_id)}>
-                  <img src={channel.profile_picture_url} className="card-img" style={{ aspectRatio: '1', height: '180px', objectFit: 'cover', width: '100%' }} />
-                  <div className="card-content">
-                    <div className="card-title">{channel.name}</div>
-                    <div className="card-stats">
-                      <Users size={14} /> {formatNumber(channel.subscriber_count)}
-                      <PlaySquare size={14} /> {channel.total_videos}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '0.8rem' }}>
-                      Last scraped: {new Date(channel.scraped_at).toLocaleString()}
-                    </div>
+            <h3 style={{ marginBottom: '1.5rem' }}>Scraped {platform === 'youtube' ? 'YouTube Channels' : 'Twitter Accounts'}</h3>
+
+            {platform === 'youtube' ? (
+              <>
+                {channels.length === 0 && !isLoading && (
+                  <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)', border: '2px dashed var(--border)', borderRadius: 'var(--radius)' }}>
+                    No channels scraped yet.
                   </div>
+                )}
+                <div className="grid">
+                  {channels.map(channel => (
+                    <div key={channel.id} className="card" onClick={() => showDetails(channel.channel_id)}>
+                      <img src={channel.profile_picture_url} className="card-img" style={{ aspectRatio: '1', height: '180px', objectFit: 'cover', width: '100%' }} />
+                      <div className="card-content">
+                        <div className="card-title">{channel.name}</div>
+                        <div className="card-stats">
+                          <Users size={14} /> {formatNumber(channel.subscriber_count)}
+                          <PlaySquare size={14} /> {channel.total_videos}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            ) : (
+              <>
+                {twitterAccounts.length === 0 && !isLoading && (
+                  <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)', border: '2px dashed var(--border)', borderRadius: 'var(--radius)' }}>
+                    No Twitter accounts scraped yet.
+                  </div>
+                )}
+                <div className="grid">
+                  {twitterAccounts.map(acc => (
+                    <div key={acc.id} className="card" onClick={() => showTwitterDetails(acc.username)}>
+                      <img src={acc.profile_image_url} className="card-img" style={{ aspectRatio: '1', height: '180px', objectFit: 'cover', width: '100%' }} />
+                      <div className="card-content">
+                        <div className="card-title">{acc.display_name}</div>
+                        <div className="card-stats">
+                          <AtSign size={14} /> @{acc.username}
+                          <Users size={14} /> {formatNumber(acc.follower_count)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )
       ) : (
