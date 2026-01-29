@@ -15,6 +15,8 @@ function App() {
   const [platform, setPlatform] = useState('youtube'); // 'youtube' or 'twitter'
   const [twitterAccounts, setTwitterAccounts] = useState([]);
   const [selectedTwitterAccount, setSelectedTwitterAccount] = useState(null);
+  const [channelType, setChannelType] = useState('');
+  const [ideology, setIdeology] = useState('');
 
   // Monitoring States
   const [monitoredChannels, setMonitoredChannels] = useState([]);
@@ -99,7 +101,9 @@ function App() {
     try {
       await axios.post(`${API_BASE}/monitoring/channels`, {
         channel_id: newMonitorId,
-        comment_text: newMonitorComment
+        comment_text: newMonitorComment,
+        channel_type: channelType,
+        ideology: ideology
       });
       setNewMonitorId('');
       setNewMonitorComment('');
@@ -128,7 +132,10 @@ function App() {
     setError(null);
     try {
       if (platform === 'youtube') {
-        await axios.post(`${API_BASE}/scrape/${searchQuery}?type=${scrapeType}`);
+        let url = `${API_BASE}/scrape/${searchQuery}?type=${scrapeType}`;
+        if (channelType) url += `&channel_type=${encodeURIComponent(channelType)}`;
+        if (ideology) url += `&ideology=${encodeURIComponent(ideology)}`;
+        await axios.post(url);
         await fetchChannels();
       } else {
         // Twitter mapping
@@ -262,6 +269,12 @@ function App() {
                   <div className="tag"><Calendar size={12} /> Joined {formatDate(selectedChannel.channel.published_at)}</div>
                   <div className="tag"><Eye size={12} /> {formatNumber(selectedChannel.channel.total_views)} total views</div>
                   <div className="tag"><PlaySquare size={12} /> {selectedChannel.channel.total_videos} videos</div>
+                  {selectedChannel.channel.channel_type && (
+                    <div className="tag" style={{ background: 'var(--accent)', color: 'white' }}>{selectedChannel.channel.channel_type}</div>
+                  )}
+                  {selectedChannel.channel.ideology && (
+                    <div className="tag" style={{ background: '#4CAF50', color: 'white' }}>{selectedChannel.channel.ideology}</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -358,6 +371,31 @@ function App() {
                   {isLoading ? <div className="loading-spinner"></div> : <><Search size={18} /> Scrape</>}
                 </button>
               </form>
+
+              {scrapeType === 'channel' && platform === 'youtube' && (
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '0.8rem', display: 'block', marginBottom: '0.3rem', color: 'var(--text-dim)' }}>Channel Type (Optional)</label>
+                    <input
+                      list="channel-types"
+                      value={channelType}
+                      onChange={(e) => setChannelType(e.target.value)}
+                      placeholder="Select or enter type..."
+                      style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'white', padding: '0.6rem' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '0.8rem', display: 'block', marginBottom: '0.3rem', color: 'var(--text-dim)' }}>Ideology (Optional)</label>
+                    <input
+                      list="ideologies"
+                      value={ideology}
+                      onChange={(e) => setIdeology(e.target.value)}
+                      placeholder="Select or enter ideology..."
+                      style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'white', padding: '0.6rem' }}
+                    />
+                  </div>
+                </div>
+              )}
               {error && <p style={{ color: 'var(--primary)', marginTop: '1rem', fontSize: '0.9rem' }}>{error}</p>}
             </div>
 
@@ -379,6 +417,10 @@ function App() {
                         <div className="card-stats">
                           <Users size={14} /> {formatNumber(channel.subscriber_count)}
                           <PlaySquare size={14} /> {channel.total_videos}
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                          {channel.channel_type && <span style={{ fontSize: '0.65rem', background: 'var(--accent)', padding: '1px 4px', borderRadius: '3px' }}>{channel.channel_type}</span>}
+                          {channel.ideology && <span style={{ fontSize: '0.65rem', background: '#4CAF50', padding: '1px 4px', borderRadius: '3px' }}>{channel.ideology}</span>}
                         </div>
                       </div>
                     </div>
@@ -452,8 +494,29 @@ function App() {
                     }}
                     placeholder="Write your automated comment here..."
                     value={newMonitorComment}
-                    onChange={(e) => setNewMonitorComment(e.target.value)}
                   />
+                </div>
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '0.8rem', display: 'block', marginBottom: '0.3rem', color: 'var(--text-dim)' }}>Channel Type</label>
+                    <input
+                      list="channel-types"
+                      value={channelType}
+                      onChange={(e) => setChannelType(e.target.value)}
+                      placeholder="Select or enter type..."
+                      style={{ width: '100%', background: '#2A2A2A', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'white', padding: '0.6rem' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '0.8rem', display: 'block', marginBottom: '0.3rem', color: 'var(--text-dim)' }}>Ideology</label>
+                    <input
+                      list="ideologies"
+                      value={ideology}
+                      onChange={(e) => setIdeology(e.target.value)}
+                      placeholder="Select or enter ideology..."
+                      style={{ width: '100%', background: '#2A2A2A', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'white', padding: '0.6rem' }}
+                    />
+                  </div>
                 </div>
                 <button type="submit" disabled={isLoading} style={{ width: '100%', justifyContent: 'center' }}>
                   {isLoading ? <div className="loading-spinner"></div> : <><Bell size={18} /> Monitor Channel</>}
@@ -475,6 +538,10 @@ function App() {
                     <div>
                       <strong>{ch.name}</strong>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{ch.channel_id}</div>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.3rem' }}>
+                        {ch.channel_type && <span style={{ fontSize: '0.7rem', background: 'var(--accent)', padding: '1px 5px', borderRadius: '3px' }}>{ch.channel_type}</span>}
+                        {ch.ideology && <span style={{ fontSize: '0.7rem', background: '#4CAF50', padding: '1px 5px', borderRadius: '3px' }}>{ch.ideology}</span>}
+                      </div>
                     </div>
                     <button onClick={() => removeMonitor(ch.id)} style={{ background: 'none', color: '#d32f2f', padding: '0.5rem' }}>
                       <Trash2 size={18} />
@@ -532,6 +599,24 @@ function App() {
           </div>
         </div>
       )}
+
+      <datalist id="channel-types">
+        <option value="news" />
+        <option value="entertainment" />
+        <option value="tech" />
+        <option value="politics" />
+        <option value="vlog" />
+        <option value="education" />
+      </datalist>
+
+      <datalist id="ideologies">
+        <option value="admk" />
+        <option value="dmk" />
+        <option value="bjp" />
+        <option value="leftist" />
+        <option value="rightist" />
+        <option value="neutral" />
+      </datalist>
     </div>
   );
 }

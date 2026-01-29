@@ -20,6 +20,8 @@ class Channel(Base):
     location = Column(String)
     username = Column(String)
     custom_url = Column(String)
+    channel_type = Column(String, nullable=True) # e.g., news, entertainment, tech
+    ideology = Column(String, nullable=True)     # e.g., admk, dmk, bjp, leftist, neutral
     scraped_at = Column(DateTime, default=datetime.utcnow)
 
     videos = relationship("Video", back_populates="channel", cascade="all, delete-orphan")
@@ -64,6 +66,8 @@ class MonitoredChannel(Base):
     comment_text = Column(Text)
     is_active = Column(Integer, default=1) # 1 for active, 0 for inactive
     last_checked_video_id = Column(String)
+    channel_type = Column(String, nullable=True)
+    ideology = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class AutomatedCommentReport(Base):

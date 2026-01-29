@@ -17,6 +17,7 @@ venv/
 ENV/
 env.bak/
 env/
+venv_new/
 
 # Large files
 *.zip
@@ -57,6 +58,7 @@ htmlcov/
 backend/venv/
 backend/__pycache__/
 backend/*.py[cod]
+backend/venv_new/
 backend/youtube_scraper.db
 
 # Databases

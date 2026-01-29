@@ -5,3 +5,5 @@ google-api-python-client
 python-dotenv
 pydantic
 aiosqlite
+tweepy
+httpx

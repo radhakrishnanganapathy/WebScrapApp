@@ -24,6 +24,8 @@ monitoring_task_running = False
 class MonitorCreate(BaseModel):
     channel_id: str
     comment_text: str
+    channel_type: str = None
+    ideology: str = None
 
 app.add_middleware(
     CORSMiddleware,
@@ -87,7 +89,13 @@ def parse_date(date_str):
 # --- YouTube Endpoints ---
 
 @app.post("/scrape/{identifier}")
-async def scrape_data(identifier: str, type: str = "channel", db: AsyncSession = Depends(get_db)):
+async def scrape_data(
+    identifier: str, 
+    type: str = "channel", 
+    channel_type: str = None, 
+    ideology: str = None, 
+    db: AsyncSession = Depends(get_db)
+):
     if type == "channel":
         try:
             channel_info = fetch_channel_info(identifier)
@@ -110,6 +118,10 @@ async def scrape_data(identifier: str, type: str = "channel", db: AsyncSession =
         db_channel.location = channel_info["location"]
         db_channel.username = channel_info["username"]
         db_channel.links = channel_info["links"]
+        if channel_type:
+            db_channel.channel_type = channel_type
+        if ideology:
+            db_channel.ideology = ideology
         db_channel.scraped_at = datetime.utcnow()
         videos_data = fetch_recent_videos(channel_info["upload_playlist_id"])
         if videos_data:
@@ -147,7 +159,9 @@ async def scrape_data(identifier: str, type: str = "channel", db: AsyncSession =
                     subscriber_count=channel_info["subscriber_count"],
                     profile_picture_url=channel_info["profile_picture_url"],
                     location=channel_info["location"],
-                    username=channel_info["username"]
+                    username=channel_info["username"],
+                    channel_type=channel_type,
+                    ideology=ideology
                 )
                 db.add(db_channel)
                 await db.commit()
@@ -338,13 +352,19 @@ async def add_monitored_channel(data: MonitorCreate, db: AsyncSession = Depends(
     if existing:
         existing.comment_text = data.comment_text
         existing.is_active = 1
+        if data.channel_type:
+            existing.channel_type = data.channel_type
+        if data.ideology:
+            existing.ideology = data.ideology
     else:
         latest_vid = get_latest_video(channel_info["channel_id"])
         new_monitor = MonitoredChannel(
             channel_id=channel_info["channel_id"],
             name=channel_info["name"],
             comment_text=data.comment_text,
-            last_checked_video_id=latest_vid
+            last_checked_video_id=latest_vid,
+            channel_type=data.channel_type,
+            ideology=data.ideology
         )
         db.add(new_monitor)
     await db.commit()
