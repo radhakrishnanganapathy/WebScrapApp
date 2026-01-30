@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Youtube, Twitter, Search, ArrowLeft, Users, PlaySquare, Eye, Calendar, Link as LinkIcon, MapPin, AtSign, Bell, Trash2, Power, MessageSquare } from 'lucide-react';
+import { Youtube, Twitter, Search, ArrowLeft, Users, PlaySquare, Eye, Calendar, Link as LinkIcon, MapPin, AtSign, Bell, Trash2, Power, MessageSquare, Filter } from 'lucide-react';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -10,6 +10,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState(null);
+  const [selectedVideo, setSelectedVideo] = useState(null);
   const [error, setError] = useState(null);
   const [scrapeType, setScrapeType] = useState('channel');
   const [platform, setPlatform] = useState('youtube'); // 'youtube' or 'twitter'
@@ -25,12 +26,27 @@ function App() {
   const [newMonitorId, setNewMonitorId] = useState('');
   const [newMonitorComment, setNewMonitorComment] = useState('');
 
+  // Channel List Filter States
+  const [filterType, setFilterType] = useState('');
+  const [filterIdeology, setFilterIdeology] = useState('');
+
+  // All Comments State
+  const [commentsList, setCommentsList] = useState([]);
+
   useEffect(() => {
-    fetchChannels();
+    if (activeTab === 'channels') {
+      fetchChannels(filterType, filterIdeology);
+    } else {
+      fetchChannels();
+    }
     fetchTwitterAccounts();
     fetchMonitoringStatus();
     fetchMonitoredChannels();
     fetchLogs();
+
+    if (activeTab === 'comments') {
+      fetchCommentsList();
+    }
 
     const timer = setInterval(() => {
       if (activeTab === 'monitor') {
@@ -40,9 +56,21 @@ function App() {
     return () => clearInterval(timer);
   }, [activeTab]);
 
-  const fetchChannels = async () => {
+  useEffect(() => {
+    if (activeTab === 'channels') {
+      fetchChannels(filterType, filterIdeology);
+    }
+  }, [filterType, filterIdeology]);
+
+  const fetchChannels = async (cType = '', ideo = '') => {
     try {
-      const response = await axios.get(`${API_BASE}/channels`);
+      let url = `${API_BASE}/channels`;
+      const params = [];
+      if (cType) params.push(`channel_type=${encodeURIComponent(cType)}`);
+      if (ideo) params.push(`ideology=${encodeURIComponent(ideo)}`);
+      if (params.length > 0) url += `?${params.join('&')}`;
+
+      const response = await axios.get(url);
       setChannels(response.data);
     } catch (err) {
       console.error("Failed to fetch channels", err);
@@ -80,6 +108,15 @@ function App() {
     try {
       const resp = await axios.get(`${API_BASE}/monitoring/logs`);
       setMonitorLogs(resp.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchCommentsList = async () => {
+    try {
+      const resp = await axios.get(`${API_BASE}/comments`);
+      setCommentsList(resp.data);
     } catch (err) {
       console.error(err);
     }
@@ -183,6 +220,20 @@ function App() {
     }
   };
 
+  const showVideoDetails = async (videoId) => {
+    setIsLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE}/videos/${videoId}`);
+      setSelectedVideo(response.data);
+      // We keep selectedChannel as is if we came from there, otherwise it might be null
+      setActiveTab('scraper');
+    } catch (err) {
+      setError("Failed to load video details");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const formatNumber = (num) => {
     if (!num) return '0';
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -223,11 +274,17 @@ function App() {
         </div>
 
         <div className="tab-container">
-          <div className={`tab ${activeTab === 'scraper' ? 'active' : ''}`} onClick={() => { setActiveTab('scraper'); setSelectedChannel(null); setSelectedTwitterAccount(null); }}>
+          <div className={`tab ${activeTab === 'scraper' ? 'active' : ''}`} onClick={() => { setActiveTab('scraper'); setSelectedChannel(null); setSelectedTwitterAccount(null); setSelectedVideo(null); }}>
             <Search size={18} /> Scraper
           </div>
           <div className={`tab ${activeTab === 'monitor' ? 'active' : ''}`} onClick={() => setActiveTab('monitor')}>
             <Bell size={18} /> Auto Comment
+          </div>
+          <div className={`tab ${activeTab === 'channels' ? 'active' : ''}`} onClick={() => setActiveTab('channels')}>
+            <Filter size={18} /> Channel List
+          </div>
+          <div className={`tab ${activeTab === 'comments' ? 'active' : ''}`} onClick={() => setActiveTab('comments')}>
+            <MessageSquare size={18} /> All Comments
           </div>
         </div>
       </header>
@@ -247,8 +304,71 @@ function App() {
         </button>
       </div>
 
-      {activeTab === 'scraper' ? (
-        selectedChannel ? (
+      {activeTab === 'scraper' && (
+        selectedVideo ? (
+          <div className="fade-in">
+            <button
+              onClick={() => setSelectedVideo(null)}
+              style={{ background: 'none', border: '1px solid var(--border)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <ArrowLeft size={18} /> Back
+            </button>
+
+            <div className="channel-profile" style={{ marginBottom: '2rem' }}>
+              <div className="channel-meta" style={{ width: '100%' }}>
+                <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{selectedVideo.video.title}</h1>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    <span className="text-dim" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Calendar size={14} /> {formatDate(selectedVideo.video.published_at)}</span>
+                    <span className="text-dim" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Eye size={14} /> {formatNumber(selectedVideo.video.views)} views</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#4CAF50' }}><Users size={14} /> {selectedVideo.video.likes} Likes</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><MessageSquare size={14} /> {selectedVideo.video.total_comments} Comments</span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                  {selectedVideo.channel && (
+                    <>
+                      <img src={selectedVideo.channel.profile_picture_url} style={{ width: '40px', height: '40px', borderRadius: '50%' }} alt="" />
+                      <div>
+                        <div style={{ fontWeight: 'bold' }}>{selectedVideo.channel.name}</div>
+                        <div className="text-dim" style={{ fontSize: '0.8rem' }}>Channel</div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius)', fontSize: '0.9rem', color: 'var(--text-dim)', marginBottom: '2rem', whiteSpace: 'pre-wrap' }}>
+                  {selectedVideo.video.description}
+                </div>
+              </div>
+            </div>
+
+            <h3 style={{ marginBottom: '1.5rem' }}>Comments ({selectedVideo.comments.length})</h3>
+            {selectedVideo.comments.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-dim)', border: '1px dashed var(--border)' }}>No comments scraped for this video yet.</div>
+            ) : (
+              <div className="grid" style={{ gridTemplateColumns: '1fr' }}>
+                {selectedVideo.comments.map(comment => (
+                  <div key={comment.id} className="card" style={{ cursor: 'default' }}>
+                    <div className="card-content">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--primary)' }}>{comment.author_name}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{formatDate(comment.published_at)}</div>
+                      </div>
+                      <div style={{ margin: '0.5rem 0' }}>{comment.text}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Users size={12} /> {comment.like_count} likes
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : selectedChannel ? (
           <div className="fade-in">
             <button onClick={() => setSelectedChannel(null)} style={{ background: 'none', border: '1px solid var(--border)', marginBottom: '1.5rem' }}>
               <ArrowLeft size={18} /> Back
@@ -282,7 +402,7 @@ function App() {
             <h3 style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Recent Videos</h3>
             <div className="grid">
               {selectedChannel.videos.map(video => (
-                <div key={video.video_id} className="card">
+                <div key={video.video_id} className="card" onClick={() => showVideoDetails(video.video_id)}>
                   <div className="card-content">
                     <div className="card-title">{video.title}</div>
                     <div className="card-stats">
@@ -452,7 +572,9 @@ function App() {
             )}
           </div>
         )
-      ) : (
+      )}
+
+      {activeTab === 'monitor' && (
         <div className="fade-in">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
             <h2>Automated Comment Module</h2>
@@ -593,6 +715,91 @@ function App() {
 
                 <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '1rem' }}>
                   Channel: {log.channel_id} • {new Date(log.created_at).toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'channels' && (
+        <div className="fade-in">
+          <h2 style={{ marginBottom: '1.5rem' }}>Filtered Channel List</h2>
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: '0.8rem', display: 'block', marginBottom: '0.5rem', color: 'var(--text-dim)' }}>Filter by Channel Type</label>
+              <input
+                list="channel-types"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                placeholder="All Types"
+                style={{ width: '100%', background: '#2A2A2A', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'white', padding: '0.8rem' }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: '0.8rem', display: 'block', marginBottom: '0.5rem', color: 'var(--text-dim)' }}>Filter by Ideology</label>
+              <input
+                list="ideologies"
+                value={filterIdeology}
+                onChange={(e) => setFilterIdeology(e.target.value)}
+                placeholder="All Ideologies"
+                style={{ width: '100%', background: '#2A2A2A', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'white', padding: '0.8rem' }}
+              />
+            </div>
+          </div>
+
+          {channels.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)', border: '2px dashed var(--border)', borderRadius: 'var(--radius)' }}>
+              No channels match the selected filters.
+            </div>
+          )}
+
+          <div className="grid">
+            {channels.map(channel => (
+              <div key={channel.id} className="card" onClick={() => showDetails(channel.channel_id)}>
+                <img src={channel.profile_picture_url} className="card-img" style={{ aspectRatio: '1', height: '180px', objectFit: 'cover', width: '100%' }} />
+                <div className="card-content">
+                  <div className="card-title">{channel.name}</div>
+                  <div className="card-stats">
+                    <Users size={14} /> {formatNumber(channel.subscriber_count)}
+                    <PlaySquare size={14} /> {channel.total_videos}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                    {channel.channel_type && <span style={{ fontSize: '0.65rem', background: 'var(--accent)', padding: '1px 4px', borderRadius: '3px' }}>{channel.channel_type}</span>}
+                    {channel.ideology && <span style={{ fontSize: '0.65rem', background: '#4CAF50', padding: '1px 4px', borderRadius: '3px' }}>{channel.ideology}</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+
+
+      {activeTab === 'comments' && (
+        <div className="fade-in">
+          <h2 style={{ marginBottom: '1.5rem' }}>All Scraped Comments</h2>
+
+          {commentsList.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)', border: '2px dashed var(--border)', borderRadius: 'var(--radius)' }}>
+              No comments found in database. scraping comments for videos via the Scraper tab to populate this list.
+            </div>
+          )}
+
+          <div className="grid">
+            {commentsList.map(comment => (
+              <div key={comment.id} className="card">
+                <div className="card-content">
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '0.5rem' }}>
+                    On video: <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={() => showVideoDetails(comment.video_id)}>{comment.video_title}</span>
+                  </div>
+                  <div style={{ fontWeight: 600, marginBottom: '0.3rem' }}>{comment.author_name}</div>
+                  <div style={{ marginBottom: '0.8rem' }}>{comment.text}</div>
+                  <div className="card-stats">
+                    <span><Users size={12} /> {comment.like_count} likes</span>
+                    <span>{formatDate(comment.published_at)}</span>
+                  </div>
                 </div>
               </div>
             ))}

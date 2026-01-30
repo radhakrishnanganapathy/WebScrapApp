@@ -326,8 +326,15 @@ async def get_twitter_account_details(username: str, db: AsyncSession = Depends(
 # --- Generic List Endpoints ---
 
 @app.get("/channels")
-async def list_channels(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Channel).order_by(Channel.scraped_at.desc()))
+async def list_channels(channel_type: str = None, ideology: str = None, db: AsyncSession = Depends(get_db)):
+    query = select(Channel)
+    if channel_type:
+        query = query.where(Channel.channel_type == channel_type)
+    if ideology:
+        query = query.where(Channel.ideology == ideology)
+    
+    query = query.order_by(Channel.scraped_at.desc())
+    result = await db.execute(query)
     return result.scalars().all()
 
 @app.get("/channels/{channel_id}")
@@ -339,6 +346,42 @@ async def get_channel_details(channel_id: str, db: AsyncSession = Depends(get_db
     v_result = await db.execute(select(Video).where(Video.channel_db_id == channel.id).order_by(Video.published_at.desc()))
     videos = v_result.scalars().all()
     return {"channel": channel, "videos": videos}
+
+@app.get("/videos/{video_id}")
+async def get_video_details(video_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Video).where(Video.video_id == video_id))
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    # Get associated channel info
+    c_result = await db.execute(select(Channel).where(Channel.id == video.channel_db_id))
+    channel = c_result.scalar_one_or_none()
+
+    # Get associated comments
+    cm_result = await db.execute(select(Comment).where(Comment.video_db_id == video.id).order_by(Comment.published_at.desc()))
+    comments = cm_result.scalars().all()
+    
+    return {"video": video, "channel": channel, "comments": comments}
+
+@app.get("/comments")
+async def list_all_comments(db: AsyncSession = Depends(get_db)):
+    # Join Comment with Video to get video title, and Video with Channel (optional)
+    # For simplicity, we'll fetch comments and eager load or just fetch video title? 
+    # Let's just return comments and let frontend fetch details or we enhance the query.
+    # A simple join is better:
+    stmt = select(Comment, Video.title, Video.video_id).join(Video, Comment.video_db_id == Video.id).order_by(Comment.published_at.desc()).limit(100)
+    result = await db.execute(stmt)
+    # result.all() will be a list of (Comment, title, video_id) tuples
+    comments_with_video = []
+    for comment, title, vid in result.all():
+        c_dict = comment.__dict__
+        if '_sa_instance_state' in c_dict:
+            del c_dict['_sa_instance_state']
+        c_dict['video_title'] = title
+        c_dict['video_id'] = vid
+        comments_with_video.append(c_dict)
+    return comments_with_video
 
 # --- Monitoring Endpoints ---
 
