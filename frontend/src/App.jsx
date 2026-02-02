@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Youtube, Twitter, Search, ArrowLeft, Users, PlaySquare, Eye, Calendar, Link as LinkIcon, MapPin, AtSign, Bell, Trash2, Power, MessageSquare, Filter, Menu, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -54,6 +54,7 @@ function App() {
 
   // Notification State
   const [previousLogIds, setPreviousLogIds] = useState(new Set());
+  const previousLogIdsRef = useRef(new Set());
 
 
   useEffect(() => {
@@ -169,27 +170,37 @@ function App() {
 
   const fetchLogs = async () => {
     try {
+      console.log("Checking for new video logs...");
       const resp = await axios.get(`${API_BASE}/monitoring/logs`);
       const newLogs = resp.data;
 
+      const currentIds = previousLogIdsRef.current;
+
       // Check for new videos and send notifications
-      if (previousLogIds.size > 0) {
-        const newVideoLogs = newLogs.filter(log => !previousLogIds.has(log.id));
+      if (currentIds.size > 0) {
+        const newVideoLogs = newLogs.filter(log => !currentIds.has(log.id));
+
+        console.log(`Found ${newVideoLogs.length} new video(s).`);
 
         for (const log of newVideoLogs) {
+          const channelName = log.channel_name || 'Channel';
+          const videoTitle = log.video_title || 'New video uploaded';
+
           await sendNotification(
-            'New Video Detected! 🎥',
-            `${log.channel_name || 'Channel'}: ${log.video_title || 'New video uploaded'}`,
+            `New video detected on ${channelName}`,
+            videoTitle,
             log.video_id
           );
         }
       }
 
       // Update previous log IDs
-      setPreviousLogIds(new Set(newLogs.map(log => log.id)));
+      const updatedIds = new Set(newLogs.map(log => log.id));
+      previousLogIdsRef.current = updatedIds;
+      setPreviousLogIds(updatedIds);
       setMonitorLogs(newLogs);
     } catch (err) {
-      console.error(err);
+      console.error("fetchLogs Error:", err);
     }
   };
 
@@ -216,17 +227,16 @@ function App() {
 
   const sendNotification = async (title, body, videoId) => {
     try {
+      console.log(`Sending notification: ${title}`);
       await LocalNotifications.schedule({
         notifications: [
           {
             title: title,
             body: body,
-            id: Math.floor(Math.random() * 1000000), // Random integer ID
-            schedule: { at: new Date(Date.now() + 100) },
+            id: Math.floor(Math.random() * 1000000),
+            schedule: { at: new Date(Date.now() + 500) },
             sound: 'default',
-            channelId: 'important-updates', // Reference the channel created above
-            smallIcon: 'ic_stat_video_call', // Standard android icon or fallback
-            attachments: null,
+            channelId: 'important-updates',
             actionTypeId: '',
             extra: { videoId: videoId }
           }
