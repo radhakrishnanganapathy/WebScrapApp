@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Youtube, Twitter, Search, ArrowLeft, Users, PlaySquare, Eye, Calendar, Link as LinkIcon, MapPin, AtSign, Bell, Trash2, Power, MessageSquare, Filter, Menu, X, CheckCircle, AlertCircle } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = 'https://webscrapappyt.onrender.com';
 
 function App() {
   const [activeTab, setActiveTab] = useState('monitor'); // Default now 'monitor' for Dashboard
