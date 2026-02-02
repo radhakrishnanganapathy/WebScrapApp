@@ -196,6 +196,16 @@ function App() {
       const result = await LocalNotifications.requestPermissions();
       if (result.display === 'granted') {
         console.log('Notification permissions granted');
+        // Create a channel for Android (required for sounds and priority)
+        await LocalNotifications.createChannel({
+          id: 'important-updates',
+          name: 'Important Updates',
+          description: 'Notifications for new video detections',
+          importance: 5, // High importance
+          visibility: 1,
+          sound: 'default',
+          vibration: true
+        });
       }
     } catch (err) {
       console.error('Error requesting notification permissions:', err);
@@ -209,9 +219,11 @@ function App() {
           {
             title: title,
             body: body,
-            id: Date.now(),
-            schedule: { at: new Date(Date.now() + 100) }, // Schedule immediately
+            id: Math.floor(Math.random() * 1000000), // Random integer ID
+            schedule: { at: new Date(Date.now() + 100) },
             sound: 'default',
+            channelId: 'important-updates', // Reference the channel created above
+            smallIcon: 'ic_stat_video_call', // Standard android icon or fallback
             attachments: null,
             actionTypeId: '',
             extra: { videoId: videoId }
