@@ -874,6 +874,7 @@ function App() {
                       }}
                       placeholder="Write your automated comment here..."
                       value={newMonitorComment}
+                      onChange={(e) => setNewMonitorComment(e.target.value)}
                       required
                     />
                   </div>
