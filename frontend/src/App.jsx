@@ -414,12 +414,37 @@ function App() {
 
   const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
-    return new Date(dateStr).toLocaleDateString('en-IN', {
+    // If it doesn't have a timezone indicator, assume it's UTC and add 'Z'
+    let fullDateStr = dateStr;
+    if (typeof dateStr === 'string' && !dateStr.includes('Z') && !dateStr.includes('+')) {
+      fullDateStr = dateStr.replace(' ', 'T') + 'Z';
+    }
+    return new Date(fullDateStr).toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
       timeZone: 'Asia/Kolkata'
     });
+  };
+
+  const getTimeAgo = (dateStr) => {
+    if (!dateStr) return '';
+    let fullDateStr = dateStr;
+    if (typeof dateStr === 'string' && !dateStr.includes('Z') && !dateStr.includes('+')) {
+      fullDateStr = dateStr.replace(' ', 'T') + 'Z';
+    }
+    const date = new Date(fullDateStr);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+
+    if (seconds < 60) return `${seconds} secs ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes} mins ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hrs ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days} days ago`;
+    return formatDate(dateStr);
   };
 
   const getPlaceholder = () => {
@@ -988,7 +1013,12 @@ function App() {
                   <div key={log.id} className="card fade-in" style={{ marginBottom: '1rem', padding: '1rem' }}>
                     <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontWeight: 'bold', color: 'var(--accent)' }}>New Video Detected</span>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>{new Date(log.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' })}</span>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.8rem', color: 'white', fontWeight: 'bold' }}>{getTimeAgo(log.created_at)}</div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>
+                          {new Date(log.created_at.replace(' ', 'T') + (log.created_at.includes('Z') ? '' : 'Z')).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}
+                        </div>
+                      </div>
                     </div>
 
                     <div style={{ marginBottom: '0.5rem' }}>
