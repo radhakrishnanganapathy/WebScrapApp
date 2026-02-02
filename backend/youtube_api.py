@@ -6,8 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-YOUTUBE_API_KEY = "AIzaSyAApu9S5i_T7aS5flDg0qHOiBy69VP10LI"
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
 def get_youtube_client():
     if not YOUTUBE_API_KEY:
