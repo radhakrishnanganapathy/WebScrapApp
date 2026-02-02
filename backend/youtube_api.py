@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+# YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+YOUTUBE_API_KEY = "AIzaSyAApu9S5i_T7aS5flDg0qHOiBy69VP10LI"
 
 def get_youtube_client():
     if not YOUTUBE_API_KEY:
@@ -153,7 +154,7 @@ def get_latest_video(channel_id):
         videos = fetch_recent_videos(channel_data["upload_playlist_id"], limit=5)
         for vid in videos:
             if not is_short_or_live(vid):
-                return vid["video_id"]
+                return {"video_id": vid["video_id"], "title": vid["title"]}
     except Exception as e:
         print(f"Error fetching latest video for {channel_id}: {e}")
     return None

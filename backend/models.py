@@ -70,17 +70,19 @@ class MonitoredChannel(Base):
     ideology = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-class AutomatedCommentReport(Base):
-    __tablename__ = "automated_comment_reports"
+class MonitorLog(Base):
+    __tablename__ = "monitor_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    channel_id = Column(String)
+    monitor_id = Column(Integer, ForeignKey("monitored_channels.id", ondelete="CASCADE"))
     video_id = Column(String)
-    comment_id = Column(String)
-    comment_text = Column(Text)
+    video_title = Column(String, nullable=True)
     status = Column(String) # "pending", "success", "failed"
-    error_message = Column(Text)
+    comment_text = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+    channel_id = Column(String)
+
+    monitor = relationship("MonitoredChannel")
 
 # --- Twitter (X) Models ---
 

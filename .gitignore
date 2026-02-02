@@ -90,3 +90,6 @@ venv/
 env/
 dist/
 build/
+backend/venv_new
+backend/venv
+backend/.env

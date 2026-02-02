@@ -1,15 +1,15 @@
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from datetime import datetime
+from sqlalchemy import select, desc
+from datetime import datetime, timedelta
 import json
 import asyncio
 
 from database import get_db, init_db
 from models import (
     Channel, Video, Comment, MonitoredChannel, 
-    AutomatedCommentReport, TwitterAccount, TwitterPost, TwitterReply
+    MonitorLog, TwitterAccount, TwitterPost, TwitterReply
 )
 from youtube_api import fetch_channel_info, fetch_recent_videos, fetch_video_details, fetch_video_comments, get_latest_video
 from twitter_api import fetch_twitter_user, fetch_tweet_details, fetch_tweet_replies
@@ -46,18 +46,24 @@ async def monitor_loop():
                     monitored_list = result.scalars().all()
                     
                     for ch in monitored_list:
-                        latest_vid = get_latest_video(ch.channel_id)
-                        if latest_vid and latest_vid != ch.last_checked_video_id:
-                            report = AutomatedCommentReport(
-                                channel_id=ch.channel_id,
-                                video_id=latest_vid,
-                                comment_id=None,
-                                comment_text=ch.comment_text,
-                                status="pending"
-                            )
-                            db.add(report)
-                            ch.last_checked_video_id = latest_vid
-                            print(f"New video detected: {latest_vid} for channel {ch.channel_id}")
+                        latest_vid_data = get_latest_video(ch.channel_id) # Returns dict {video_id, title} or None
+                        
+                        if latest_vid_data:
+                            latest_vid_id = latest_vid_data['video_id']
+                            latest_vid_title = latest_vid_data['title']
+
+                            if latest_vid_id != ch.last_checked_video_id:
+                                log = MonitorLog(
+                                    monitor_id=ch.id,
+                                    video_id=latest_vid_id,
+                                    video_title=latest_vid_title,
+                                    comment_text=ch.comment_text,
+                                    status="pending",
+                                    channel_id=ch.channel_id
+                                )
+                                db.add(log)
+                                ch.last_checked_video_id = latest_vid_id
+                                print(f"New video detected: {latest_vid_title} for channel {ch.channel_id}")
                     
                     await db.commit()
             except Exception as e:
@@ -364,15 +370,46 @@ async def get_video_details(video_id: str, db: AsyncSession = Depends(get_db)):
     
     return {"video": video, "channel": channel, "comments": comments}
 
+@app.get("/video_list")
+async def list_videos(
+    channel_type: str = None, 
+    ideology: str = None, 
+    channel_name: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    # If no filters provided, maybe return empty? 
+    # Frontend logic will control when to call this.
+    # We'll allow returning all videos if requested carefully, but let's stick to returning matches.
+    
+    query = select(Video).join(Channel, Video.channel_db_id == Channel.id)
+    
+    if channel_type:
+        query = query.where(Channel.channel_type.ilike(f"%{channel_type}%"))
+    if ideology:
+        query = query.where(Channel.ideology.ilike(f"%{ideology}%"))
+    if channel_name:
+        query = query.where(Channel.name.ilike(f"%{channel_name}%"))
+        
+    query = query.order_by(Video.published_at.desc())
+    
+    result = await db.execute(query)
+    videos = result.scalars().all()
+    return videos
+
 @app.get("/comments")
-async def list_all_comments(db: AsyncSession = Depends(get_db)):
-    # Join Comment with Video to get video title, and Video with Channel (optional)
-    # For simplicity, we'll fetch comments and eager load or just fetch video title? 
-    # Let's just return comments and let frontend fetch details or we enhance the query.
-    # A simple join is better:
-    stmt = select(Comment, Video.title, Video.video_id).join(Video, Comment.video_db_id == Video.id).order_by(Comment.published_at.desc()).limit(100)
+async def list_all_comments(video_id: str = None, db: AsyncSession = Depends(get_db)):
+    # Join Comment with Video to get video title
+    stmt = select(Comment, Video.title, Video.video_id).join(Video, Comment.video_db_id == Video.id)
+    
+    if video_id:
+        stmt = stmt.where(Video.video_id == video_id)
+        
+    stmt = stmt.order_by(Comment.published_at.desc())
+    
+    if not video_id:
+        stmt = stmt.limit(100) # Limit default view if no video selected
+
     result = await db.execute(stmt)
-    # result.all() will be a list of (Comment, title, video_id) tuples
     comments_with_video = []
     for comment, title, vid in result.all():
         c_dict = comment.__dict__
@@ -400,12 +437,15 @@ async def add_monitored_channel(data: MonitorCreate, db: AsyncSession = Depends(
         if data.ideology:
             existing.ideology = data.ideology
     else:
-        latest_vid = get_latest_video(channel_info["channel_id"])
+        latest_vid_data = get_latest_video(channel_info["channel_id"])
+        latest_vid_id = latest_vid_data['video_id'] if latest_vid_data else None
+        
         new_monitor = MonitoredChannel(
             channel_id=channel_info["channel_id"],
             name=channel_info["name"],
             comment_text=data.comment_text,
-            last_checked_video_id=latest_vid,
+            last_checked_video_id=latest_vid_id,
+
             channel_type=data.channel_type,
             ideology=data.ideology
         )
@@ -426,6 +466,35 @@ async def remove_monitored_channel(id: int, db: AsyncSession = Depends(get_db)):
         await db.delete(channel)
         await db.commit()
     return {"message": "Channel removed from monitoring"}
+
+@app.get("/monitoring/logs")
+async def get_monitoring_logs(db: AsyncSession = Depends(get_db)):
+    # Filter logs created in the last 24 hours
+    one_day_ago = datetime.utcnow() - timedelta(hours=24)
+    
+    result = await db.execute(
+        select(MonitorLog, MonitoredChannel.name)
+        .join(MonitoredChannel, MonitorLog.monitor_id == MonitoredChannel.id)
+        .where(MonitorLog.created_at >= one_day_ago)
+        .order_by(desc(MonitorLog.created_at))
+    )
+    
+    logs = []
+    rows = result.all() # .all() on execute result gives list of rows
+    for row in rows:
+        log = row[0]
+        channel_name = row[1]
+        logs.append({
+            "id": log.id,
+            "video_id": log.video_id,
+            "video_title": log.video_title,
+            "channel_name": channel_name,
+            "status": log.status,
+            "comment_text": log.comment_text,
+            "created_at": log.created_at,
+            "channel_id": log.channel_id
+        })
+    return logs
 
 @app.post("/monitoring/toggle")
 async def toggle_monitoring():
