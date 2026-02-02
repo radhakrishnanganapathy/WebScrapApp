@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Youtube, Twitter, Search, ArrowLeft, Users, PlaySquare, Eye, Calendar, Link as LinkIcon, MapPin, AtSign, Bell, Trash2, Power, MessageSquare, Filter, Menu, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 const API_BASE = 'https://webscrapappyt.onrender.com';
 
@@ -51,8 +52,14 @@ function App() {
   // All Comments State
   const [commentsList, setCommentsList] = useState([]);
 
+  // Notification State
+  const [previousLogIds, setPreviousLogIds] = useState(new Set());
+
 
   useEffect(() => {
+    // Request notification permissions on app load
+    requestNotificationPermission();
+
     if (activeTab === 'channels') {
       fetchChannels(filterType, filterIdeology);
     } else {
@@ -161,9 +168,58 @@ function App() {
   const fetchLogs = async () => {
     try {
       const resp = await axios.get(`${API_BASE}/monitoring/logs`);
-      setMonitorLogs(resp.data);
+      const newLogs = resp.data;
+
+      // Check for new videos and send notifications
+      if (previousLogIds.size > 0) {
+        const newVideoLogs = newLogs.filter(log => !previousLogIds.has(log.id));
+
+        for (const log of newVideoLogs) {
+          await sendNotification(
+            'New Video Detected! 🎥',
+            `${log.channel_name || 'Channel'}: ${log.video_title || 'New video uploaded'}`,
+            log.video_id
+          );
+        }
+      }
+
+      // Update previous log IDs
+      setPreviousLogIds(new Set(newLogs.map(log => log.id)));
+      setMonitorLogs(newLogs);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const requestNotificationPermission = async () => {
+    try {
+      const result = await LocalNotifications.requestPermissions();
+      if (result.display === 'granted') {
+        console.log('Notification permissions granted');
+      }
+    } catch (err) {
+      console.error('Error requesting notification permissions:', err);
+    }
+  };
+
+  const sendNotification = async (title, body, videoId) => {
+    try {
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            title: title,
+            body: body,
+            id: Date.now(),
+            schedule: { at: new Date(Date.now() + 100) }, // Schedule immediately
+            sound: 'default',
+            attachments: null,
+            actionTypeId: '',
+            extra: { videoId: videoId }
+          }
+        ]
+      });
+    } catch (err) {
+      console.error('Error sending notification:', err);
     }
   };
 
