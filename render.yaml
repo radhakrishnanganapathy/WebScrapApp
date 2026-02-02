@@ -12,13 +12,4 @@ services:
         value: 3.11.5
       - key: YOUTUBE_API_KEY
         sync: false
-      - key: TWITTER_API_KEY
-        sync: false
-      - key: TWITTER_API_SECRET
-        sync: false
-      - key: TWITTER_BEARER_TOKEN
-        sync: false
-      - key: TWITTER_ACCESS_TOKEN
-        sync: false
-      - key: TWITTER_ACCESS_TOKEN_SECRET
-        sync: false
+ 
