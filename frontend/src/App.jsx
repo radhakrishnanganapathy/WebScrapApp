@@ -74,14 +74,16 @@ function App() {
       // Don't auto-fetch all comments. Wait for user selection.
       // fetchCommentsList(); 
     }
-
-    const timer = setInterval(() => {
-      if (activeTab === 'monitor') {
-        fetchLogs();
-      }
-    }, 30000);
-    return () => clearInterval(timer);
   }, [activeTab]);
+
+  // Background timer for notifications (independent of active tab)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchLogs();
+    }, 60000); // Check every 60 seconds for background notifications
+
+    return () => clearInterval(timer);
+  }, []); // Only on mount
 
   useEffect(() => {
     if (activeTab === 'channels') {
@@ -948,7 +950,15 @@ function App() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
             {/* Left Column: Monitored Channels */}
             <div>
-              <h3 style={{ marginBottom: '1rem' }}>Monitored Channels List</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h2>Monitoring Dashboard</h2>
+                <button
+                  onClick={() => sendNotification("Test Notification", "If you see this, notifications are working!", "test")}
+                  style={{ fontSize: '0.7rem', padding: '4px 8px', background: 'var(--border)', border: 'none', borderRadius: '4px', color: 'white' }}
+                >
+                  Test Notification
+                </button>
+              </div>
 
               {/* Filters */}
               <div className="filter-container" style={{ padding: '1rem', marginBottom: '1rem' }}>
