@@ -56,6 +56,21 @@ class Comment(Base):
     scraped_at = Column(DateTime, default=datetime.utcnow)
 
     video = relationship("Video", back_populates="comments")
+    replies = relationship("CommentReply", back_populates="comment", cascade="all, delete-orphan")
+
+class CommentReply(Base):
+    __tablename__ = "comment_replies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    reply_id = Column(String, unique=True, index=True)
+    comment_db_id = Column(Integer, ForeignKey("comments.id"))
+    text = Column(Text)
+    author_name = Column(String)
+    like_count = Column(Integer)
+    published_at = Column(DateTime)
+    scraped_at = Column(DateTime, default=datetime.utcnow)
+
+    comment = relationship("Comment", back_populates="replies")
 
 class MonitoredChannel(Base):
     __tablename__ = "monitored_channels"

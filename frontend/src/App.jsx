@@ -56,6 +56,13 @@ function App() {
   const [previousLogIds, setPreviousLogIds] = useState(new Set());
   const previousLogIdsRef = useRef(new Set());
 
+  // Reply State
+  const [repliesList, setRepliesList] = useState([]);
+  const [targetVideoId, setTargetVideoId] = useState('');
+  const [targetUserHandle, setTargetUserHandle] = useState('');
+  const [targetUserChannelId, setTargetUserChannelId] = useState('');
+  const [replyFilterVideoId, setReplyFilterVideoId] = useState('');
+
 
   useEffect(() => {
     // Request notification permissions on app load
@@ -97,7 +104,47 @@ function App() {
         setVideoList([]); // Clear list if no filters
       }
     }
-  }, [filterType, filterIdeology, videoFilterType, videoFilterIdeology, videoFilterChannel, activeTab]);
+    if (activeTab === 'replies') {
+      fetchRepliesList(replyFilterVideoId);
+    }
+  }, [filterType, filterIdeology, videoFilterType, videoFilterIdeology, videoFilterChannel, activeTab, replyFilterVideoId]);
+
+  const fetchRepliesList = async (vidId) => {
+    setIsLoading(true);
+    try {
+      const url = vidId ? `${API_BASE}/comment_replies?video_id=${vidId}` : `${API_BASE}/comment_replies`;
+      const resp = await axios.get(url);
+      setRepliesList(resp.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleScrapeReplies = async (e) => {
+    e.preventDefault();
+    if (!targetVideoId || (!targetUserHandle && !targetUserChannelId)) {
+      showToast("Please provide Video ID and either User Handle or Channel ID", "error");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      let url = `${API_BASE}/scrape_replies/${targetVideoId}?`;
+      if (targetUserHandle) url += `author_name=${encodeURIComponent(targetUserHandle)}`;
+      if (targetUserChannelId) url += `${targetUserHandle ? '&' : ''}author_channel_id=${encodeURIComponent(targetUserChannelId)}`;
+
+      await axios.post(url);
+      showToast("Replies scraped successfully!", "success");
+      fetchRepliesList(replyFilterVideoId || targetVideoId);
+      setTargetUserHandle('');
+      setTargetUserChannelId('');
+    } catch (err) {
+      showToast(err.response?.data?.detail || "Failed to scrape replies", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Effect to populate Video Dropdown in Comments tab
   useEffect(() => {
@@ -576,6 +623,18 @@ function App() {
                 }}
               >
                 <PlaySquare size={20} /> Video List
+              </button>
+
+              <button
+                onClick={() => { setActiveTab('replies'); setIsDrawerOpen(false); }}
+                className="drawer-option"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.8rem 1rem', border: 'none',
+                  background: activeTab === 'replies' ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                  color: activeTab === 'replies' ? 'white' : 'var(--text-dim)'
+                }}
+              >
+                <AtSign size={20} /> Comment Reply
               </button>
 
               <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '0.5rem', marginTop: '1.5rem' }}>Platform</div>
@@ -1312,6 +1371,86 @@ function App() {
                 </div>
               )}
             </>
+          )}
+        </div>
+      )}
+      {activeTab === 'replies' && (
+        <div className="fade-in">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <h1>Comment Replies</h1>
+          </div>
+
+          <div className="card" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
+            <h3 style={{ marginBottom: '1rem' }}>Scrape Replies by User Handle or Channel ID</h3>
+            <form onSubmit={handleScrapeReplies} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '0.5rem' }}>Video ID</label>
+                <input
+                  value={targetVideoId}
+                  onChange={(e) => setTargetVideoId(e.target.value)}
+                  placeholder="e.g. dQw4w9WgXcQ"
+                  style={{ width: '100%', padding: '0.7rem', background: '#1A1A1A', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'white' }}
+                  required
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '0.5rem' }}>User Handle / Name</label>
+                <input
+                  value={targetUserHandle}
+                  onChange={(e) => setTargetUserHandle(e.target.value)}
+                  placeholder="Leave empty if using Channel ID"
+                  style={{ width: '100%', padding: '0.7rem', background: '#1A1A1A', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'white' }}
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '0.5rem' }}>User Channel ID</label>
+                <input
+                  value={targetUserChannelId}
+                  onChange={(e) => setTargetUserChannelId(e.target.value)}
+                  placeholder="e.g. UCxxxxxxxxxxxx"
+                  style={{ width: '100%', padding: '0.7rem', background: '#1A1A1A', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'white' }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', width: '100%' }}>
+                <button type="submit" disabled={isLoading} style={{ width: '100%', padding: '0.7rem 1.5rem', justifyContent: 'center' }}>
+                  {isLoading ? <div className="loading-spinner"></div> : 'Scrape Replies'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="filter-container" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
+            <h3 style={{ marginBottom: '1rem' }}>Filter Replies</h3>
+            <div style={{ maxWidth: '400px' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '0.5rem' }}>Filter by Video ID</label>
+              <input
+                value={replyFilterVideoId}
+                onChange={(e) => setReplyFilterVideoId(e.target.value)}
+                placeholder="Enter Video ID to filter..."
+                style={{ width: '100%', padding: '0.7rem', background: '#1A1A1A', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'white' }}
+              />
+            </div>
+          </div>
+
+          <div className="grid">
+            {repliesList.map(reply => (
+              <div key={reply.reply_id} className="card" style={{ padding: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <span style={{ fontWeight: 'bold', color: 'var(--accent)' }}>{reply.author_name}</span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>{formatDate(reply.published_at)}</span>
+                </div>
+                <div style={{ fontSize: '0.9rem', marginBottom: '1rem', whiteSpace: 'pre-wrap' }}>{reply.text}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '0.5rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                  <span>Replied to: <strong>{reply.parent_author}</strong></span>
+                  <span>Video: {reply.video_id}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {repliesList.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)', border: '2px dashed var(--border)', borderRadius: 'var(--radius)' }}>
+              No replies found. Scrape some or change the filter.
+            </div>
           )}
         </div>
       )}

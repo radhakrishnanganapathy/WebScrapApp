@@ -8,10 +8,13 @@ import asyncio
 
 from database import get_db, init_db
 from models import (
-    Channel, Video, Comment, MonitoredChannel, 
+    Channel, Video, Comment, CommentReply, MonitoredChannel, 
     MonitorLog, TwitterAccount, TwitterPost, TwitterReply
 )
-from youtube_api import fetch_channel_info, fetch_recent_videos, fetch_video_details, fetch_video_comments, get_latest_video
+from youtube_api import (
+    fetch_channel_info, fetch_recent_videos, fetch_video_details, 
+    fetch_video_comments, get_latest_video, fetch_comment_replies
+)
 from twitter_api import fetch_twitter_user, fetch_tweet_details, fetch_tweet_replies
 from pydantic import BaseModel
 
@@ -419,6 +422,96 @@ async def list_all_comments(video_id: str = None, db: AsyncSession = Depends(get
         c_dict['video_id'] = vid
         comments_with_video.append(c_dict)
     return comments_with_video
+
+@app.post("/scrape_replies/{video_id}")
+async def scrape_replies(video_id: str, author_name: str = None, author_channel_id: str = None, db: AsyncSession = Depends(get_db)):
+    # 1. Fetch info from YouTube
+    parent_data, replies_data = fetch_comment_replies(video_id, author_name=author_name, author_channel_id=author_channel_id)
+    
+    if not parent_data:
+        raise HTTPException(status_code=404, detail="Parent comment not found in this video.")
+        
+    # 2. Ensure Video exists
+    result = await db.execute(select(Video).where(Video.video_id == video_id))
+    video = result.scalar_one_or_none()
+    
+    if not video:
+        vol_data = fetch_video_details(video_id)
+        if not vol_data:
+             raise HTTPException(status_code=404, detail="Video details not found.")
+        
+        c_res = await db.execute(select(Channel).where(Channel.channel_id == vol_data['channel_id']))
+        channel = c_res.scalar_one_or_none()
+        if not channel:
+            channel = Channel(channel_id=vol_data['channel_id'], name="Auto-scraped Channel")
+            db.add(channel)
+            await db.flush()
+            
+        video = Video(
+            video_id=video_id,
+            channel_db_id=channel.id,
+            title=vol_data['title'],
+            published_at=datetime.strptime(vol_data['published_at'], "%Y-%m-%dT%H:%M:%SZ") if vol_data['published_at'] else None
+        )
+        db.add(video)
+        await db.flush()
+
+    # Ensure parent comment exists
+    c_res = await db.execute(select(Comment).where(Comment.comment_id == parent_data['comment_id']))
+    parent_comment = c_res.scalar_one_or_none()
+    
+    if not parent_comment:
+        parent_comment = Comment(
+            comment_id=parent_data['comment_id'],
+            video_db_id=video.id,
+            text=parent_data['text'],
+            author_name=parent_data['author_name'],
+            like_count=parent_data['like_count'],
+            published_at=datetime.strptime(parent_data['published_at'], "%Y-%m-%dT%H:%M:%SZ") if parent_data['published_at'] else None
+        )
+        db.add(parent_comment)
+        await db.flush()
+
+    # 3. Add Replies
+    added_count = 0
+    for r in replies_data:
+        r_res = await db.execute(select(CommentReply).where(CommentReply.reply_id == r['reply_id']))
+        if not r_res.scalar_one_or_none():
+            reply = CommentReply(
+                reply_id=r['reply_id'],
+                comment_db_id=parent_comment.id,
+                text=r['text'],
+                author_name=r['author_name'],
+                like_count=r['like_count'],
+                published_at=datetime.strptime(r['published_at'], "%Y-%m-%dT%H:%M:%SZ") if r['published_at'] else None
+            )
+            db.add(reply)
+            added_count += 1
+            
+    await db.commit()
+    return {"message": f"Successfully scraped {added_count} replies.", "parent_comment": parent_data}
+
+@app.get("/comment_replies")
+async def list_comment_replies(video_id: str = None, db: AsyncSession = Depends(get_db)):
+    stmt = select(CommentReply, Comment.author_name.label("parent_author"), Video.video_id)\
+           .join(Comment, CommentReply.comment_db_id == Comment.id)\
+           .join(Video, Comment.video_db_id == Video.id)
+           
+    if video_id:
+        stmt = stmt.where(Video.video_id == video_id)
+        
+    stmt = stmt.order_by(CommentReply.published_at.desc())
+    
+    result = await db.execute(stmt)
+    replies = []
+    for reply, parent_author, vid in result.all():
+        r_dict = {}
+        for column in reply.__table__.columns:
+            r_dict[column.name] = getattr(reply, column.name)
+        r_dict['parent_author'] = parent_author
+        r_dict['video_id'] = vid
+        replies.append(r_dict)
+    return replies
 
 # --- Monitoring Endpoints ---
 

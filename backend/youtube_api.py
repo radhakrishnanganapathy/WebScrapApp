@@ -213,3 +213,78 @@ def fetch_video_comments(video_id, limit=20):
         })
     
     return comments
+
+def fetch_comment_replies(video_id, author_name=None, author_channel_id=None, limit=50):
+    youtube = get_youtube_client()
+    
+    # 1. Find the top-level comment by author_name or author_channel_id
+    thread_id = None
+    parent_comment_data = None
+    
+    next_page_token = None
+    while True:
+        try:
+            threads_response = youtube.commentThreads().list(
+                part="snippet",
+                videoId=video_id,
+                maxResults=100,
+                pageToken=next_page_token,
+                textFormat="plainText"
+            ).execute()
+        except Exception:
+            break
+            
+        for item in threads_response.get('items', []):
+            snippet = item['snippet']['topLevelComment']['snippet']
+            
+            match = False
+            # Match by Channel ID if provided
+            if author_channel_id:
+                if snippet.get('authorChannelId', {}).get('value') == author_channel_id:
+                    match = True
+            # Otherwise match by Display Name
+            elif author_name:
+                if snippet.get('authorDisplayName') == author_name or snippet.get('authorDisplayName') == f"@{author_name}":
+                    match = True
+            
+            if match:
+                thread_id = item['id']
+                parent_comment_data = {
+                    "comment_id": item['id'],
+                    "text": snippet.get('textDisplay'),
+                    "author_name": snippet.get('authorDisplayName'),
+                    "like_count": snippet.get('likeCount', 0),
+                    "published_at": snippet.get('publishedAt')
+                }
+                break
+        
+        if thread_id or not threads_response.get('nextPageToken'):
+            break
+        next_page_token = threads_response.get('nextPageToken')
+
+    if not thread_id:
+        return None, []
+
+    # 2. Fetch replies for this thread
+    replies = []
+    try:
+        replies_response = youtube.comments().list(
+            part="snippet",
+            parentId=thread_id,
+            maxResults=limit,
+            textFormat="plainText"
+        ).execute()
+        
+        for item in replies_response.get('items', []):
+            snippet = item['snippet']
+            replies.append({
+                "reply_id": item['id'],
+                "text": snippet.get('textDisplay'),
+                "author_name": snippet.get('authorDisplayName'),
+                "like_count": snippet.get('likeCount', 0),
+                "published_at": snippet.get('publishedAt')
+            })
+    except Exception:
+        pass
+        
+    return parent_comment_data, replies
