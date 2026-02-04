@@ -3,7 +3,9 @@ import axios from 'axios';
 import { Youtube, Twitter, Search, ArrowLeft, Users, PlaySquare, Eye, Calendar, Link as LinkIcon, MapPin, AtSign, Bell, Trash2, Power, MessageSquare, Filter, Menu, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
-const API_BASE = 'https://webscrapappyt.onrender.com';
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:8000'
+  : 'https://webscrapappyt.onrender.com';
 
 function App() {
   const [activeTab, setActiveTab] = useState('monitor'); // Default now 'monitor' for Dashboard
@@ -1247,7 +1249,7 @@ function App() {
                 <option value="">{filteredVideosForComments.length > 0 ? "-- Select a Video --" : "-- No videos match filters --"}</option>
                 {filteredVideosForComments.map(v => (
                   <option key={v.video_id} value={v.video_id}>
-                    {v.title.length > 60 ? v.title.substring(0, 60) + '...' : v.title} ({formatDate(v.published_at)})
+                    {(v.title || '').length > 60 ? (v.title || '').substring(0, 60) + '...' : (v.title || 'Untitled Video')} ({formatDate(v.published_at)})
                   </option>
                 ))}
               </select>
@@ -1283,7 +1285,7 @@ function App() {
       )}
 
       <datalist id="scraped-channels">
-        {channels.map(c => <option key={c.id} value={c.name} />)}
+        {Array.isArray(channels) && channels.map(c => <option key={c.id} value={c.name} />)}
       </datalist>
 
       <datalist id="channel-types">
