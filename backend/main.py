@@ -103,6 +103,8 @@ async def scrape_data(
     type: str = "channel", 
     channel_type: str = None, 
     ideology: str = None, 
+    pages: int = 1,
+    max_results: int = 50,
     db: AsyncSession = Depends(get_db)
 ):
     if type == "channel":
@@ -132,7 +134,7 @@ async def scrape_data(
         if ideology:
             db_channel.ideology = ideology
         db_channel.scraped_at = datetime.utcnow()
-        videos_data = fetch_recent_videos(channel_info["upload_playlist_id"])
+        videos_data = fetch_recent_videos(channel_info["upload_playlist_id"], pages=pages, max_results=max_results)
         if videos_data:
             db_channel.last_video_uploaded_at = parse_date(videos_data[0]["published_at"])
             for v in videos_data:
@@ -190,7 +192,7 @@ async def scrape_data(
         await db.commit()
         return {"message": "Video Scraped", "id": video_details["video_id"]}
     elif type == "comment":
-        comments_data = fetch_video_comments(identifier)
+        comments_data = fetch_video_comments(identifier, pages=pages, max_results=max_results)
         if not comments_data:
             return {"message": "No comments found or comments disabled", "count": 0}
         v_result = await db.execute(select(Video).where(Video.video_id == identifier))

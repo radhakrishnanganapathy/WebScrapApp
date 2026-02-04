@@ -23,6 +23,8 @@ function App() {
   const [selectedTwitterAccount, setSelectedTwitterAccount] = useState(null);
   const [channelType, setChannelType] = useState('');
   const [ideology, setIdeology] = useState('');
+  const [scrapePages, setScrapePages] = useState(1);
+  const [scrapeMaxResults, setScrapeMaxResults] = useState(50);
 
   // Monitoring States
   const [monitoredChannels, setMonitoredChannels] = useState([]);
@@ -402,7 +404,7 @@ function App() {
     setIsLoading(true);
     try {
       if (platform === 'youtube') {
-        let url = `${API_BASE}/scrape/${searchQuery}?type=${scrapeType}`;
+        let url = `${API_BASE}/scrape/${searchQuery}?type=${scrapeType}&pages=${scrapePages}&max_results=${scrapeMaxResults}`;
         if (channelType) url += `&channel_type=${encodeURIComponent(channelType)}`;
         if (ideology) url += `&ideology=${encodeURIComponent(ideology)}`;
         await axios.post(url);
@@ -888,6 +890,33 @@ function App() {
                           onChange={(e) => setIdeology(e.target.value)}
                           placeholder="Select or enter ideology..."
                           style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'white', padding: '0.6rem' }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {(scrapeType === 'channel' || scrapeType === 'comment') && platform === 'youtube' && (
+                    <div className="monitor-form-row">
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Pages to Scrape</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="20"
+                          value={scrapePages}
+                          onChange={(e) => setScrapePages(parseInt(e.target.value) || 1)}
+                          style={{ width: '100%', padding: '0.8rem' }}
+                        />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Records Per Page (Max {scrapeType === 'channel' ? 50 : 100})</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max={scrapeType === 'channel' ? 50 : 100}
+                          value={scrapeMaxResults}
+                          onChange={(e) => setScrapeMaxResults(parseInt(e.target.value) || 50)}
+                          style={{ width: '100%', padding: '0.8rem' }}
                         />
                       </div>
                     </div>

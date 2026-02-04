@@ -106,42 +106,53 @@ def is_short_or_live(video_data):
         
     return False
 
-def fetch_recent_videos(upload_playlist_id, limit=10):
+def fetch_recent_videos(upload_playlist_id, pages=1, max_results=50):
     youtube = get_youtube_client()
     
-    playlist_items = youtube.playlistItems().list(
-        part="snippet,contentDetails",
-        playlistId=upload_playlist_id,
-        maxResults=limit
-    ).execute()
-
-    video_ids = [item['contentDetails']['videoId'] for item in playlist_items.get('items', [])]
-    
-    if not video_ids:
-        return []
-
-    video_details = youtube.videos().list(
-        part="snippet,statistics,contentDetails",
-        id=",".join(video_ids)
-    ).execute()
-
     videos = []
-    for item in video_details.get('items', []):
-        snippet = item['snippet']
-        stats = item['statistics']
-        content = item['contentDetails']
-        videos.append({
-            "video_id": item['id'],
-            "title": snippet.get('title'),
-            "description": snippet.get('description'),
-            "published_at": snippet.get('publishedAt'),
-            "live_broadcast_content": snippet.get('liveBroadcastContent'),
-            "duration": content.get('duration'),
-            "views": int(stats.get('viewCount', 0)),
-            "likes": int(stats.get('likeCount', 0)),
-            "total_comments": int(stats.get('commentCount', 0))
-        })
+    next_page_token = None
     
+    # max_results for playlistItems must be between 1 and 50
+    safe_max = min(max(int(max_results), 1), 50)
+    
+    for _ in range(int(pages)):
+        playlist_items = youtube.playlistItems().list(
+            part="snippet,contentDetails",
+            playlistId=upload_playlist_id,
+            maxResults=safe_max,
+            pageToken=next_page_token
+        ).execute()
+
+        video_ids = [item['contentDetails']['videoId'] for item in playlist_items.get('items', [])]
+        
+        if not video_ids:
+            break
+
+        video_details = youtube.videos().list(
+            part="snippet,statistics,contentDetails",
+            id=",".join(video_ids)
+        ).execute()
+
+        for item in video_details.get('items', []):
+            snippet = item['snippet']
+            stats = item['statistics']
+            content = item['contentDetails']
+            videos.append({
+                "video_id": item['id'],
+                "title": snippet.get('title'),
+                "description": snippet.get('description'),
+                "published_at": snippet.get('publishedAt'),
+                "live_broadcast_content": snippet.get('liveBroadcastContent'),
+                "duration": content.get('duration'),
+                "views": int(stats.get('viewCount', 0)),
+                "likes": int(stats.get('likeCount', 0)),
+                "total_comments": int(stats.get('commentCount', 0))
+            })
+        
+        next_page_token = playlist_items.get('nextPageToken')
+        if not next_page_token:
+            break
+            
     return videos
 
 def get_latest_video(channel_id):
@@ -151,8 +162,9 @@ def get_latest_video(channel_id):
         if not channel_data:
             return None
         
-        videos = fetch_recent_videos(channel_data["upload_playlist_id"], limit=5)
-        for vid in videos:
+        videos = fetch_recent_videos(channel_data["upload_playlist_id"], pages=1)
+        # Keep only up to 5 for the latest check
+        for vid in videos[:5]:
             if not is_short_or_live(vid):
                 return {"video_id": vid["video_id"], "title": vid["title"]}
     except Exception as e:
@@ -188,29 +200,40 @@ def fetch_video_details(video_id):
         "total_comments": int(stats.get('commentCount', 0))
     }
 
-def fetch_video_comments(video_id, limit=20):
+def fetch_video_comments(video_id, pages=1, max_results=100):
     youtube = get_youtube_client()
     
-    try:
-        comments_response = youtube.commentThreads().list(
-            part="snippet",
-            videoId=video_id,
-            maxResults=limit,
-            textFormat="plainText"
-        ).execute()
-    except Exception:
-        return []
-
     comments = []
-    for item in comments_response.get('items', []):
-        snippet = item['snippet']['topLevelComment']['snippet']
-        comments.append({
-            "comment_id": item['id'],
-            "text": snippet.get('textDisplay'),
-            "author_name": snippet.get('authorDisplayName'),
-            "like_count": snippet.get('likeCount', 0),
-            "published_at": snippet.get('publishedAt')
-        })
+    next_page_token = None
+    
+    # maxResults for commentThreads must be between 1 and 100
+    safe_max = min(max(int(max_results), 1), 100)
+    
+    for _ in range(int(pages)):
+        try:
+            comments_response = youtube.commentThreads().list(
+                part="snippet",
+                videoId=video_id,
+                maxResults=safe_max,
+                pageToken=next_page_token,
+                textFormat="plainText"
+            ).execute()
+        except Exception:
+            break
+
+        for item in comments_response.get('items', []):
+            snippet = item['snippet']['topLevelComment']['snippet']
+            comments.append({
+                "comment_id": item['id'],
+                "text": snippet.get('textDisplay'),
+                "author_name": snippet.get('authorDisplayName'),
+                "like_count": snippet.get('likeCount', 0),
+                "published_at": snippet.get('publishedAt')
+            })
+        
+        next_page_token = comments_response.get('nextPageToken')
+        if not next_page_token:
+            break
     
     return comments
 
